@@ -25,36 +25,117 @@ jobs:
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO
 
+      # --- Signing (optional) ---
+      # Provide these repo secrets to enable Developer ID signing on CI:
+      #   APPLE_CERTIFICATE_P12_B64  — base64 of exported Developer ID .p12
+      #   APPLE_CERTIFICATE_PASSWORD — password for the .p12 (if any)
+      - name: Import Developer ID certificate
+        if: env.APPLE_CERTIFICATE_P12_B64 != ''
+        env:
+          APPLE_CERTIFICATE_P12_B64: ${{ secrets.APPLE_CERTIFICATE_P12_B64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD || 'ci-keychain' }}
+        run: |
+          echo "$APPLE_CERTIFICATE_P12_B64" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain 2>/dev/null || true
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security find-identity -v -p codesigning
+          rm /tmp/cert.p12
+
       - name: Archive Release
         run: |
-          xcodebuild archive \
-            -project Dumps.xcodeproj \
-            -scheme Dumps \
-            -configuration Release \
-            -archivePath build/Dumps.xcarchive \
-            CODE_SIGNING_ALLOWED=NO \
-            SKIP_INSTALL=NO
+          if [ -n "${{ secrets.APPLE_CERTIFICATE_P12_B64 }}" ]; then
+            echo "Archiving with Developer ID signing..."
+            xcodebuild archive \
+              -project Dumps.xcodeproj \
+              -scheme Dumps \
+              -configuration Release \
+              -archivePath build/Dumps.xcarchive \
+              CODE_SIGN_STYLE=Automatic \
+              DEVELOPMENT_TEAM=TSYXZS29G9 \
+              CODE_SIGN_IDENTITY="Developer ID Application"
+          else
+            echo "No signing certificate — archiving unsigned..."
+            xcodebuild archive \
+              -project Dumps.xcodeproj \
+              -scheme Dumps \
+              -configuration Release \
+              -archivePath build/Dumps.xcarchive \
+              CODE_SIGNING_ALLOWED=NO \
+              SKIP_INSTALL=NO
+          fi
+          ls -lh build/Dumps.xcarchive/Products/Applications/Dumps.app/Contents/MacOS/ 2>/dev/null || true
 
-      - name: Export .app (unsigned, for artifact)
+      - name: Export .app + ZIP
         run: |
           mkdir -p build/export
           cp -R build/Dumps.xcarchive/Products/Applications/Dumps.app build/export/
-          ditto -c -k --sequesterRsrc --keepParent build/export/Dumps.app "build/Dumps-${{ github.ref_name }}-unsigned.zip"
-          ls -lh build/*.zip build/export/
+          ditto -c -k --sequesterRsrc --keepParent build/export/Dumps.app "build/Dumps-${{ github.ref_name }}.zip"
+          # Also produce unsigned-named artifact for backwards compat
+          cp "build/Dumps-${{ github.ref_name }}.zip" "build/Dumps-${{ github.ref_name }}-unsigned.zip" 2>/dev/null || true
+          ls -lh build/*.zip
 
-      - name: Create DMG (unsigned)
+      - name: Create DMG
         run: |
           brew install create-dmg 2>/dev/null || true
           mkdir -p build/dmg
           cp -R build/export/Dumps.app build/dmg/
           ln -s /Applications build/dmg/Applications 2>/dev/null || true
-          hdiutil create -volname "Dumps" -srcfolder build/dmg -ov -format UDZO "build/Dumps-${{ github.ref_name }}-unsigned.dmg" || \
-            ditto -c -k --sequesterRsrc build/dmg "build/Dumps-${{ github.ref_name }}-unsigned.dmg.zip"
+          hdiutil create -volname "Dumps" -srcfolder build/dmg -ov -format UDZO "build/Dumps-${{ github.ref_name }}.dmg" || \
+            ditto -c -k --sequesterRsrc build/dmg "build/Dumps-${{ github.ref_name }}.dmg.zip"
+          cp "build/Dumps-${{ github.ref_name }}.dmg" "build/Dumps-${{ github.ref_name }}-unsigned.dmg" 2>/dev/null || true
           ls -lh build/*.dmg* 2>/dev/null; ls -lh build/*.zip 2>/dev/null
+
+      # --- Notarization (optional) ---
+      # Provide these repo secrets to enable notarization:
+      #   APPLE_API_KEY_P8_B64  — base64 of AuthKey_XXXXXXXX.p8
+      #   APPLE_API_KEY_ID      — Key ID (e.g. ABCDE12345)
+      #   APPLE_API_ISSUER_ID   — Issuer ID (UUID from App Store Connect)
+      - name: Notarize ZIP
+        if: env.APPLE_API_KEY_ID != '' && env.APPLE_API_ISSUER_ID != ''
+        env:
+          APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8_B64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APPLE_API_KEY_P8_B64" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+          echo "Submitting ZIP for notarization..."
+          xcrun notarytool submit "build/Dumps-${{ github.ref_name }}.zip" \
+            --key ~/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8 \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" \
+            --wait --timeout 30m
+          echo "Stapling ZIP ticket..."
+          xcrun stapler staple "build/Dumps-${{ github.ref_name }}.zip" 2>/dev/null || echo "ZIP staple skipped (expected)"
+
+      - name: Notarize DMG
+        if: env.APPLE_API_KEY_ID != '' && env.APPLE_API_ISSUER_ID != ''
+        env:
+          APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8_B64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          if [ -f "build/Dumps-${{ github.ref_name }}.dmg" ]; then
+            echo "Submitting DMG for notarization..."
+            xcrun notarytool submit "build/Dumps-${{ github.ref_name }}.dmg" \
+              --key ~/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8 \
+              --key-id "$APPLE_API_KEY_ID" \
+              --issuer "$APPLE_API_ISSUER_ID" \
+              --wait --timeout 30m
+            echo "Stapling DMG..."
+            xcrun stapler staple "build/Dumps-${{ github.ref_name }}.dmg"
+            hdiutil verify "build/Dumps-${{ github.ref_name }}.dmg" 2>/dev/null || true
+            spctl -a -vvv -t install build/export/Dumps.app 2>&1 | head -n 20
+          fi
 
       - name: SHA256
         run: |
-          shasum -a 256 build/Dumps-${{ github.ref_name }}-unsigned.* 2>/dev/null | tee build/SHA256SUMS.txt || true
+          shasum -a 256 build/Dumps-${{ github.ref_name }}*.zip build/Dumps-${{ github.ref_name }}*.dmg 2>/dev/null | tee build/SHA256SUMS.txt || shasum -a 256 build/Dumps-${{ github.ref_name }}* 2>/dev/null | tee build/SHA256SUMS.txt || true
           cat build/SHA256SUMS.txt 2>/dev/null || echo "no checksum"
 
       - name: Publish GitHub Release
@@ -62,20 +143,21 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            build/Dumps-${{ github.ref_name }}.zip
+            build/Dumps-${{ github.ref_name }}.dmg
             build/Dumps-${{ github.ref_name }}-unsigned.zip
             build/Dumps-${{ github.ref_name }}-unsigned.dmg
-            build/Dumps-${{ github.ref_name }}-unsigned.dmg.zip
             build/SHA256SUMS.txt
           generate_release_notes: true
           fail_on_unmatched_files: false
 
-      - name: Upload artifact (dispatch / non-tag)
+      - name: Upload artifact (dispatch)
         if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v4
         with:
-          name: Dumps-${{ github.ref_name }}-unsigned
+          name: Dumps-${{ github.ref_name }}
           path: |
-            build/Dumps-${{ github.ref_name }}-unsigned.zip
-            build/Dumps-${{ github.ref_name }}-unsigned.dmg
+            build/Dumps-${{ github.ref_name }}.zip
+            build/Dumps-${{ github.ref_name }}.dmg
             build/SHA256SUMS.txt
           if-no-files-found: warn
