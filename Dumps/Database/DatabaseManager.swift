@@ -73,8 +73,6 @@ final class DatabaseManager {
         try exec("PRAGMA journal_mode=WAL;")
         try exec("PRAGMA foreign_keys=ON;")
         try exec("PRAGMA busy_timeout=5000;")
-
-        try Migrations.runMigrations(db: opened)
     }
 
     func close() {

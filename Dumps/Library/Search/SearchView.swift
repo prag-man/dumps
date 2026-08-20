@@ -12,26 +12,30 @@ struct SearchBarView: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.textQuaternary).accessibilityHidden(true)
+                .foregroundStyle(Theme.textQuaternary(for: scheme)).accessibilityHidden(true)
             TextField("Search dumps…", text: $query)
                 .textFieldStyle(.plain).font(.system(size: 12.5))
-                .foregroundStyle(scheme == .dark ? Theme.textPrimary : Color.primary)
+                .foregroundStyle(Theme.textPrimary(for: scheme))
                 .focused($isFocused).onSubmit {}
             if !query.isEmpty {
                 Button { query = "" } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(Theme.textTertiary)
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(Theme.textTertiary(for: scheme))
                 }.buttonStyle(.plain).help("Clear search").accessibilityLabel("Clear search")
             }
         }
         .padding(.horizontal, 9).padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(scheme == .dark ? Color.white.opacity(0.07) : Color(nsColor: .controlBackgroundColor))
+                .fill(Theme.raised(for: scheme))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(isFocused ? Theme.accent.opacity(0.5) : (scheme == .dark ? Theme.separator : Color(nsColor: .separatorColor).opacity(0.7)), lineWidth: isFocused ? 1 : 0.5)
+                .strokeBorder(
+                    isFocused ? Theme.violet : Theme.hairlineBorder(for: scheme),
+                    lineWidth: isFocused ? 1 : DumpsMetrics.hairline
+                )
         )
+        .shadow(color: isFocused ? Theme.violet.opacity(0.12) : Color.clear, radius: 6, y: 1)
         .animation(.easeOut(duration: 0.12), value: isFocused)
     }
 }

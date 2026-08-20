@@ -1,0 +1,24 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: |
+          xcodebuild test \
+            -project Dumps.xcodeproj \
+            -scheme Dumps \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Release build
+        run: |
+          xcodebuild build \
+            -project Dumps.xcodeproj \
+            -scheme Dumps \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO

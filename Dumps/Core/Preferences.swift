@@ -1,9 +1,20 @@
 import Foundation
 import Combine
+import ServiceManagement
+
+enum Appearance: String, CaseIterable, Identifiable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+    var id: String { rawValue }
+    var displayName: String { rawValue.capitalized }
+}
 
 final class Preferences: ObservableObject {
 
     static let shared = Preferences()
+
+    private let userDefaults: UserDefaults
 
     private enum Keys {
         static let launchAtLogin = "launchAtLogin"
@@ -14,32 +25,75 @@ final class Preferences: ObservableObject {
     }
 
     @Published var launchAtLogin: Bool {
-        didSet { UserDefaults.standard.set(launchAtLogin, forKey: Keys.launchAtLogin) }
+        didSet {
+            // Sync with SMAppService; only persist on success.
+            if #available(macOS 13.0, *) {
+                do {
+                    if launchAtLogin {
+                        try SMAppService.mainApp.register()
+                    } else {
+                        try SMAppService.mainApp.unregister()
+                    }
+                    userDefaults.set(launchAtLogin, forKey: Keys.launchAtLogin)
+                } catch {
+                    debugPrint("[Preferences] SMAppService toggle failed: \(error)")
+                    // Revert on failure without re-triggering didSet loop
+                    if launchAtLogin != oldValue {
+                        DispatchQueue.main.async { [weak self] in
+                            self?.launchAtLogin = oldValue
+                        }
+                    }
+                }
+            } else {
+                userDefaults.set(launchAtLogin, forKey: Keys.launchAtLogin)
+            }
+        }
     }
 
     @Published var globalShortcutKeyCode: Int {
-        didSet { UserDefaults.standard.set(globalShortcutKeyCode, forKey: Keys.globalShortcutKeyCode) }
+        didSet { userDefaults.set(globalShortcutKeyCode, forKey: Keys.globalShortcutKeyCode) }
     }
 
     @Published var globalShortcutModifiers: Int {
-        didSet { UserDefaults.standard.set(globalShortcutModifiers, forKey: Keys.globalShortcutModifiers) }
+        didSet { userDefaults.set(globalShortcutModifiers, forKey: Keys.globalShortcutModifiers) }
     }
 
     @Published var appearance: String {
-        didSet { UserDefaults.standard.set(appearance, forKey: Keys.appearance) }
+        didSet {
+            let normalized = appearance.lowercased()
+            if normalized != appearance {
+                appearance = normalized
+                return
+            }
+            userDefaults.set(normalized, forKey: Keys.appearance)
+        }
+    }
+
+    var appearanceEnum: Appearance {
+        get { Appearance(rawValue: appearance.lowercased()) ?? .system }
+        set { appearance = newValue.rawValue }
     }
 
     @Published var showMenuBarIcon: Bool {
-        didSet { UserDefaults.standard.set(showMenuBarIcon, forKey: Keys.showMenuBarIcon) }
+        didSet { userDefaults.set(showMenuBarIcon, forKey: Keys.showMenuBarIcon) }
     }
 
     init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         let defaults = userDefaults
 
-        if defaults.object(forKey: Keys.launchAtLogin) != nil {
-            self.launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
+        // launchAtLogin: reflect actual system state on macOS 13+
+        if #available(macOS 13.0, *) {
+            let enabled = SMAppService.mainApp.status == .enabled
+            self.launchAtLogin = enabled
+            // Persist the ground-truth so legacy fallback stays consistent
+            defaults.set(enabled, forKey: Keys.launchAtLogin)
         } else {
-            self.launchAtLogin = false
+            if defaults.object(forKey: Keys.launchAtLogin) != nil {
+                self.launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
+            } else {
+                self.launchAtLogin = false
+            }
         }
 
         if defaults.object(forKey: Keys.globalShortcutKeyCode) != nil {
@@ -54,8 +108,8 @@ final class Preferences: ObservableObject {
             self.globalShortcutModifiers = 1 << 19
         }
 
-        if let saved = defaults.string(forKey: Keys.appearance), ["system", "light", "dark"].contains(saved) {
-            self.appearance = saved
+        if let saved = defaults.string(forKey: Keys.appearance), ["system", "light", "dark"].contains(saved.lowercased()) {
+            self.appearance = saved.lowercased()
         } else {
             self.appearance = "system"
         }
@@ -64,6 +118,17 @@ final class Preferences: ObservableObject {
             self.showMenuBarIcon = defaults.bool(forKey: Keys.showMenuBarIcon)
         } else {
             self.showMenuBarIcon = true
+        }
+    }
+
+    /// Re-read the actual SMAppService status and update the published value.
+    func syncLaunchAtLoginFromSystem() {
+        if #available(macOS 13.0, *) {
+            let enabled = SMAppService.mainApp.status == .enabled
+            if enabled != launchAtLogin {
+                launchAtLogin = enabled
+            }
+            userDefaults.set(enabled, forKey: Keys.launchAtLogin)
         }
     }
 }

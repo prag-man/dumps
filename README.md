@@ -1,128 +1,184 @@
 # Dumps
 
-A fast, keyboard-first macOS scratchpad for capturing thoughts into buckets.
+<p align="center">
+  <strong>Dump the thought. Keep the flow.</strong><br>
+  An ultralight, local-first thought capture utility for macOS.
+</p>
 
-![Dumps screenshot](https://via.placeholder.com/800x500?text=Dumps+Screenshot)
+<p align="center">
+  <code>⌥ Space</code> → type → <code>Enter</code>. Done.
+</p>
 
-## Features
+---
 
-- **Instant capture** — Press `Option + Space` from anywhere to dump a thought.
-- **Buckets** — Organize dumps into named buckets; drag to reorder.
-- **Feed** — Chronological feed grouped by day, newest first.
-- **Search** — Filter dumps by content, optionally scoped to a bucket.
-- **Soft delete & restore** — Deleted dumps can be restored.
-- **Draft persistence** — In-progress capture is saved on quit and restored on launch.
-- **Menu bar** — Quick access via the `tray` icon: open library, new dump, active bucket, launch at login, settings, quit.
-- **Launch at Login** — Toggle via Settings or the menu bar (uses `SMAppService` on macOS 13+).
+Dumps gives you one tiny place to get a thought out of your head without switching context.
 
-## Requirements
+Press the shortcut from anywhere on your Mac. A minimal capture surface appears beneath the notch. Type whatever is in your head, choose a bucket if you need to, press Enter, and get back to what you were doing.
 
-- macOS 14.0+
-- Xcode 15.0+
-- Swift 5
+No account. No cloud. No workspace to maintain.
 
-No external dependencies — pure Swift/SwiftUI + AppKit + SQLite3.
+> Screenshots and capture demo GIF will be added after the visual convergence pass ships.
 
-## Build & Run
+## Capture from anywhere
+
+- **`⌥ Space`** — open / hide Capture
+- **`Enter`** — save
+- **`Shift + Enter`** — new line
+- **`Shift + Tab`** — next bucket
+- **`Esc`** — discard
+
+If you hide Capture without discarding, your unfinished thought is preserved locally for the next time you open it.
+
+## A feed for how you actually thought
+
+Dumps keeps a day-wise thread of everything you captured.
+
+- newest days first,
+- thoughts stay in the order you captured them,
+- move a dump between buckets without changing its place in history,
+- search across your local library,
+- edit or clean things up later.
+
+Capture first. Organize later.
+
+## Buckets, not bureaucracy
+
+Buckets are intentionally simple.
+
+Use them for things like:
+
+- Inbox
+- Work
+- Ideas
+- Personal
+- Reading
+
+`Shift + Tab` moves through your bucket order while capturing. Drag buckets in the sidebar to reorder — Shift+Tab follows the same order.
+
+No nested folder trees. No databases. No setup ceremony.
+
+## Local by design
+
+Dumps is built as a local macOS utility.
+
+- no account,
+- no backend,
+- no cloud sync,
+- no analytics pipeline,
+- no dump content sent to a server,
+- local SQLite database,
+- works offline.
+
+Your dumps live on your Mac.
+
+## Built to stay out of the way
+
+Dumps is native Swift + AppKit + SwiftUI with SQLite underneath.
+
+The capture path is deliberately small:
+
+```
+shortcut
+→ capture
+→ local transaction
+→ gone
+```
+
+No browser shell. No sync engine. No server round trip.
+
+> Performance measurements will be published from Release builds once the benchmark suite is locked.
+
+## Install
+
+### Download
+
+Download the latest notarized build from **GitHub Releases** (coming soon).
+
+1. Open the `.dmg`.
+2. Drag **Dumps** into Applications.
+3. Launch Dumps.
+4. Choose your capture shortcut if `⌥ Space` is already in use.
+5. Optionally enable **Launch at Login**.
+
+### Build from source
+
+Requirements:
+
+- macOS 14+
+- Xcode 15+
 
 ```bash
+git clone https://github.com/prag-man/dumps.git
+cd dumps
 open Dumps.xcodeproj
 ```
 
-Then select the **Dumps** scheme and press `⌘R`, or build from the command line:
+Or:
 
 ```bash
-xcodebuild -project Dumps.xcodeproj -scheme Dumps -configuration Debug build
+xcodebuild \
+  -project Dumps.xcodeproj \
+  -scheme Dumps \
+  -configuration Debug \
+  build
 ```
 
 Run tests:
 
 ```bash
-xcodebuild test -project Dumps.xcodeproj -scheme Dumps -destination 'platform=macOS'
+xcodebuild test \
+  -project Dumps.xcodeproj \
+  -scheme Dumps \
+  -destination 'platform=macOS'
 ```
+
+## Where the data lives
+
+By default:
+
+```
+~/Library/Application Support/Dumps/dumps.sqlite
+```
+
+Dumps uses SQLite in WAL mode.
 
 ## Architecture
 
 ```
-Dumps/
-├── App/               # App lifecycle
-│   ├── DumpsApp.swift      # @main SwiftUI App, WindowGroup + Settings + MenuBarExtra
-│   └── AppDelegate.swift   # NSApplicationDelegate: DB, capture, hotkey, status item
-├── Capture/           # Global capture
-│   ├── CaptureState.swift
-│   ├── CapturePanel.swift  # NSPanel (floating)
-│   ├── CaptureView.swift
-│   ├── CaptureController.swift
-│   ├── HotkeyManager.swift # Carbon EventHotKey (Option+Space)
-│   ├── DraftStore.swift    # UserDefaults-backed draft persistence
-│   └── ScreenResolver.swift
-├── Core/
-│   ├── Models/
-│   │   ├── Bucket.swift
-│   │   ├── Dump.swift
-│   │   └── DayGroup.swift  # Feed day-grouping helper
-│   ├── Repositories/
-│   │   ├── BucketRepository.swift
-│   │   └── DumpRepository.swift
-│   ├── ActiveBucketStore.swift
-│   └── Preferences.swift   # ObservableObject + SMAppService
-├── Database/
-│   ├── DatabaseManager.swift  # SQLite3 wrapper (file + :memory: for tests)
-│   └── Migrations.swift
-├── Library/
-│   ├── LibraryWindow.swift # NavigationSplitView (Sidebar + Feed)
-│   ├── Sidebar/
-│   ├── Feed/
-│   ├── Search/
-│   ├── DumpEditor/
-│   └── Settings/
-└── Resources/
-    └── Assets.xcassets
-
-DumpsTests/
-└── DumpsTests.swift    # XCTest suite (in-memory SQLite)
+Dumps.app
+├── Capture
+│   ├── global hotkey
+│   ├── notch/top-center panel
+│   └── local draft recovery
+├── Core
+│   ├── dumps
+│   ├── buckets
+│   └── active capture bucket
+├── Database
+│   └── SQLite
+└── Library
+    ├── Feed
+    ├── Search
+    └── Settings
 ```
 
-### Data Flow
+The app intentionally has no backend in v1.
 
+## Contributing
+
+Issues and small focused pull requests are welcome.
+
+Before opening a PR:
+
+```bash
+xcodebuild test \
+  -project Dumps.xcodeproj \
+  -scheme Dumps \
+  -destination 'platform=macOS'
 ```
-HotkeyManager --(toggle)--> CaptureController --(create)--> DumpRepository --> SQLite
-                                                        \
-ActiveBucketStore <-- BucketRepository <-- DatabaseManager
-Preferences --(SMAppService)--> Launch at Login
-DraftStore <--> UserDefaults (survives termination)
-```
 
-### Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| UI | SwiftUI + AppKit (`NSPanel`, `NSStatusItem`, `NSAlert`) |
-| Persistence | SQLite3 (via `libsqlite3`, WAL mode) |
-| Login item | `ServiceManagement` / `SMAppService` |
-| Hotkey | Carbon `RegisterEventHotKey` |
-| State | `ObservableObject` / `@Published` / `@StateObject` |
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Option + Space` | Toggle capture panel (global) |
-| `⌘N` | New dump |
-| `⌘F` | Focus search |
-| `⌘,` | Open Settings |
-| `⌘Q` | Quit |
-| `Esc` | Dismiss capture |
-| `⌘Return` | Save capture |
-
-## Project Structure
-
-See **Architecture** above. Key conventions:
-
-- Repositories own all SQL; views never touch `DatabaseManager` directly.
-- `DatabaseManager` supports `:memory:` databases for hermetic tests.
-- `DayGroup.group(_:)` groups pre-sorted dumps by calendar day for the feed.
+Please keep Dumps small. New features should not make the capture path slower, heavier, or dependent on a network connection.
 
 ## License
 
-MIT
+MIT — see [`LICENSE`](LICENSE).

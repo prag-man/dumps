@@ -1,51 +1,42 @@
 import AppKit
 
-/// Resolves the screen that should host the capture panel and computes its frame.
 enum ScreenResolver {
-
-    static let panelWidth: CGFloat = 480
+    static let panelWidth: CGFloat = DumpsMetrics.captureWidth
     static let panelTopInset: CGFloat = 8
 
-    /// Returns the screen that currently contains the mouse pointer.
-    /// Falls back to `NSScreen.main` or the first available screen.
     static func screenContainingMouse() -> NSScreen {
-        let mouseLocation = NSEvent.mouseLocation
-        // NSEvent.mouseLocation and NSScreen.frame share the same coordinate space
-        // (origin at bottom-left, Quartz coordinates). No flipping needed.
-        for screen in NSScreen.screens where screen.frame.contains(mouseLocation) {
-            return screen
-        }
+        let loc = NSEvent.mouseLocation
+        for screen in NSScreen.screens where screen.frame.contains(loc) { return screen }
         if let main = NSScreen.main { return main }
         if let first = NSScreen.screens.first { return first }
         return NSScreen.screens.first ?? NSScreen.main!
     }
 
-    /// Convenience accessor for the active screen (used by some callers).
-    static var activeScreen: NSScreen? {
-        screenContainingMouse()
-    }
-
-    static var mainScreen: NSScreen? {
-        NSScreen.main
-    }
-
+    static var activeScreen: NSScreen? { screenContainingMouse() }
+    static var mainScreen: NSScreen? { NSScreen.main }
     static var panelCenter: NSPoint {
-        let screen = activeScreen ?? NSScreen.main
-        guard let s = screen else { return .zero }
-        return NSPoint(x: s.frame.midX, y: s.frame.midY)
+        let s = activeScreen ?? NSScreen.main; guard let screen = s else { return .zero }
+        return NSPoint(x: screen.frame.midX, y: screen.frame.midY)
     }
 
-    /// Returns the frame for the capture panel positioned at the top-center of the given screen.
-    /// Uses `screen.frame` (not `visibleFrame`) so the panel sits at the physical top edge,
-    /// visually merging with the notch/menu-bar area.
-    /// - Parameters:
-    ///   - screen: The screen to position on.
-    ///   - panelHeight: The current height of the panel.
-    static func captureFrame(for screen: NSScreen, panelHeight: CGFloat = 64) -> NSRect {
-        let width: CGFloat = panelWidth
-        let height: CGFloat = panelHeight
+    static func captureFrame(for screen: NSScreen, panelHeight: CGFloat = 56) -> NSRect {
+        let width = panelWidth
+        let height = panelHeight
+        let visibleTop = screen.visibleFrame.maxY
+        let frameTop = screen.frame.maxY
+        let notchGap: CGFloat
+        if visibleTop < frameTop - 2 {
+            notchGap = 6
+        } else {
+            notchGap = panelTopInset
+        }
+        let y = min(visibleTop, frameTop) - height - notchGap + (visibleTop < frameTop ? 0 : 0)
+        let actualY = screen.frame.maxY - height - (visibleTop < frameTop ? 6 : panelTopInset)
         let x = screen.frame.midX - width / 2
-        let y = screen.frame.maxY - height - panelTopInset
-        return NSRect(x: x, y: y, width: width, height: height)
+        return NSRect(x: x, y: actualY, width: width, height: height)
+    }
+
+    static func isNotchedScreen(_ screen: NSScreen) -> Bool {
+        screen.visibleFrame.maxY < screen.frame.maxY - 2
     }
 }

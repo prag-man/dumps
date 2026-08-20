@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -6,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var captureController: CaptureController?
     var hotkeyManager: HotkeyManager?
     var statusItem: NSStatusItem?
+    var libraryWindowController: LibraryWindowController?
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupDatabase()
@@ -13,12 +16,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupCapture()
         setupHotkey()
         setupStatusItem()
-        registerTerminationHandler()
+        observePreferences()
         showFirstRunHintIfNeeded()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Preserve any in-flight capture draft
+        // Preserve any in-flight capture draft (single termination handler — no duplicate observer)
         if let c = captureController, c.state != .hidden {
             c.hide(preserveDraft: true)
         }
@@ -32,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { try DatabaseManager.shared.open() } catch { debugPrint("[AppDelegate] DB open failed: \(error)") }
         DatabaseManager.shared.withDB { db in
             try? Migrations.runMigrations(db: db)
+            // Bootstrap is also called inside runMigrations; this is a safety net for
+            // existing installs where migrations already ran but Inbox is missing.
+            try? Migrations.bootstrapIfNeeded(db: db)
         }
     }
 
@@ -39,9 +45,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupActiveBucket() {
         let store = ActiveBucketStore.shared
+        // Ensure bootstrap at AppDelegate level (idempotent) before resolving active bucket.
+        DatabaseManager.shared.withDB { db in
+            try? Migrations.bootstrapIfNeeded(db: db)
+        }
         store.load()
-        if store.activeBucketId == nil, let first = BucketRepository().listActive().first {
-            store.setActive(id: first.id)
+        if store.activeBucketId == nil {
+            if let first = BucketRepository().listActive().first {
+                store.setActive(id: first.id)
+            } else {
+                // No buckets at all — create Inbox via repository (covers fresh install edge)
+                if let inbox = try? BucketRepository().create(name: "Inbox") {
+                    store.load()
+                    store.setActive(id: inbox.id)
+                } else {
+                    // Fallback: reload in case bootstrap created Inbox on another path
+                    DatabaseManager.shared.withDB { db in try? Migrations.bootstrapIfNeeded(db: db) }
+                    store.load()
+                    if let first = BucketRepository().listActive().first {
+                        store.setActive(id: first.id)
+                    } else {
+                        store.fallbackIfNeeded()
+                    }
+                }
+            }
+        } else {
+            store.fallbackIfNeeded()
         }
         // Also seed main-thread store used by DumpsApp
         // (DumpsApp creates its own ActiveBucketStore instance via @StateObject)
@@ -74,15 +103,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.hotkeyManager = manager
     }
 
+    // MARK: - Library (lazy)
+
+    @objc func openLibrary() {
+        if libraryWindowController == nil {
+            libraryWindowController = LibraryWindowController()
+        } else {
+            libraryWindowController?.showWindow(nil)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: - Preferences observation
+
+    private func observePreferences() {
+        Preferences.shared.$showMenuBarIcon
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateStatusItemVisibility() }
+            .store(in: &cancellables)
+        // Ensure initial visibility matches preference
+        updateStatusItemVisibility()
+    }
+
     // MARK: - Status Item
 
     private func setupStatusItem() {
+        guard Preferences.shared.showMenuBarIcon else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "tray", accessibilityDescription: "Dumps")
         }
         item.menu = buildStatusMenu()
         self.statusItem = item
+    }
+
+    func updateStatusItemVisibility() {
+        let shouldShow = Preferences.shared.showMenuBarIcon
+        if shouldShow {
+            if statusItem == nil { setupStatusItem() }
+        } else {
+            if let item = statusItem {
+                NSStatusBar.system.removeStatusItem(item)
+                statusItem = nil
+            }
+        }
     }
 
     private func buildStatusMenu() -> NSMenu {
@@ -111,10 +175,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
-    @objc private func openLibrary() {
-        NSApp.activate(ignoringOtherApps: true)
-        for window in NSApp.windows where window.canBecomeKey { window.makeKeyAndOrderFront(nil); return }
-    }
     @objc private func newDump() { captureController?.show() }
     @objc private func toggleLaunchAtLogin() {
         if #available(macOS 13.0, *) {
@@ -123,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 else { try SMAppService.mainApp.register() }
             } catch { NSSound.beep() }
             statusItem?.menu = buildStatusMenu()
+            Preferences.shared.syncLaunchAtLoginFromSystem()
         } else {
             let cur = UserDefaults.standard.bool(forKey: "launchAtLogin")
             UserDefaults.standard.set(!cur, forKey: "launchAtLogin")
@@ -135,22 +196,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc private func quit() { NSApp.terminate(nil) }
 
-    private func registerTerminationHandler() {
-        NotificationCenter.default.addObserver(self, selector: #selector(handleWillTerminate), name: NSApplication.willTerminateNotification, object: nil)
-    }
-    @objc private func handleWillTerminate() {
-        if let c = captureController, c.state != .hidden { c.hide(preserveDraft: true) }
-    }
-
     private func showFirstRunHintIfNeeded() {
         let key = "hasShownFirstRunHint"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
-        let alert = NSAlert()
-        alert.messageText = "Welcome to Dumps"
-        alert.informativeText = "Press Option + Space to capture a dump from anywhere.\n\nShortcuts:\n  ⌘N — New dump\n  ⌘F — Search\n  ⌘, — Settings"
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Got it")
-        alert.runModal()
     }
 }

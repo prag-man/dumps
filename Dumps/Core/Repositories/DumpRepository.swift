@@ -36,7 +36,17 @@ final class DumpRepository {
             let now = Date()
             let dump = Dump(id: UUID().uuidString, bucketId: bucketId, content: content, createdAt: now, updatedAt: now, deletedAt: nil)
             try Self.insert(dump: dump, db: handle)
-            if clearDraft { var s: OpaquePointer?; if sqlite3_prepare_v2(handle, "DELETE FROM capture_draft WHERE singleton_id = 1;", -1, &s, nil) == SQLITE_OK { sqlite3_step(s); sqlite3_finalize(s) } }
+            if clearDraft {
+                let delSQL = "DELETE FROM capture_draft WHERE singleton_id = 1;"
+                var s: OpaquePointer?
+                guard sqlite3_prepare_v2(handle, delSQL, -1, &s, nil) == SQLITE_OK else {
+                    throw DatabaseError.sqliteError(code: sqlite3_errcode(handle), message: String(cString: sqlite3_errmsg(handle)), sql: delSQL)
+                }
+                defer { sqlite3_finalize(s) }
+                guard sqlite3_step(s) == SQLITE_DONE else {
+                    throw DatabaseError.sqliteError(code: sqlite3_errcode(handle), message: String(cString: sqlite3_errmsg(handle)), sql: delSQL)
+                }
+            }
             result = dump
         }
         return result

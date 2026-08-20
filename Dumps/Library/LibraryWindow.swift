@@ -9,7 +9,6 @@ extension Notification.Name {
 struct LibraryView: View {
     @State private var selectedBucketId: String? = nil
     @State private var searchQuery = ""
-    @State private var isSettingsPresented = false
     @StateObject private var activeBucketStore = ActiveBucketStore.shared
     @FocusState private var searchFocused: Bool
     @Environment(\.colorScheme) private var scheme
@@ -29,7 +28,10 @@ struct LibraryView: View {
                     .frame(minWidth: 220, idealWidth: 320, maxWidth: 400)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button { isSettingsPresented = true } label: {
+                Button {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    NSApp.sendAction(Selector(("showPreferences:")), to: nil, from: nil)
+                } label: {
                     Image(systemName: "gearshape").font(.system(size: 13, weight: .regular))
                 }
                 .help("Settings")
@@ -38,9 +40,6 @@ struct LibraryView: View {
             }
         }
         .background(Button("") { searchFocused = true }.keyboardShortcut("f", modifiers: .command).hidden())
-        .sheet(isPresented: $isSettingsPresented) {
-            SettingsView().frame(width: 480, height: 360)
-        }
         .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in searchFocused = true }
         .background(scheme == .dark ? Theme.background : Color(nsColor: .windowBackgroundColor))
     }

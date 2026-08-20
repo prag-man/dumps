@@ -25,7 +25,7 @@
 		715A0A9C5C6DE3E1385432DC /* DraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867E5C94001B16CDB8F58E26 /* DraftStore.swift */; };
 		74159654E12F8272E0EE2C65 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5B3AADCE5E26CCFCA43D432 /* HotkeyManager.swift */; };
 		7F1481665A7EC06260722070 /* CaptureState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03FAC840125A4A93807FB34 /* CaptureState.swift */; };
-		9F0C94315B21CDA663751D65 /* Assets.xcassets in Sources */ = {isa = PBXBuildFile; fileRef = 3E2C58EF8C9F8E0C107D7EB8 /* Assets.xcassets */; };
+		9F0C94315B21CDA663751D65 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3E2C58EF8C9F8E0C107D7EB8 /* Assets.xcassets */; };
 		A7D5A9E620A4928A699CBC1E /* BucketRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC60C39D683B03F06BDA5685 /* BucketRepository.swift */; };
 		AEE8AE800DF3D574843F6766 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8161A45380207113839701D1 /* Cocoa.framework */; };
 		AF1A533A5155F756AE1964C4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1B714CD834AF7221183F7E /* AppDelegate.swift */; };
@@ -388,6 +388,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9F0C94315B21CDA663751D65 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -430,7 +431,6 @@
 				63C36C7981317692466AF6B3 /* DumpEditorView.swift in Sources */,
 				61A2BC3E4DBA1D0CD15A520A /* SettingsView.swift in Sources */,
 				2E60A6D08F804791B6164A6A /* LibraryWindow.swift in Sources */,
-				9F0C94315B21CDA663751D65 /* Assets.xcassets in Sources */,
 				6E500F7E26BA23527DFA855C /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -458,6 +458,8 @@
 		172FE9254621D4B8EC3FF067 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 0.9.0;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pragman.dumps;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -478,6 +480,8 @@
 		66B5365E9F516B0AAF85240A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 0.9.0;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -532,6 +536,8 @@
 		75021D642BE9508753B7A5B4 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 0.9.0;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pragman.dumps;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -580,6 +586,8 @@
 		CB4CFFB5126ECE5CD2042291 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 0.9.0;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;

@@ -50,13 +50,16 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $selectedBucketId) {
             Section {
-                Label { Text("All Dumps").font(.system(size: 12.5, weight: .medium)) } icon: {
-                    Image(systemName: "square.grid.2x2").font(.system(size: 11))
-                }
-                .tag(Optional<String>.none)
-                .listRowInsets(EdgeInsets(top: 5, leading: 10, bottom: 5, trailing: 10))
+                Text("Feed")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary(for: scheme))
+                    .tag(Optional<String>.none)
+                    .listRowInsets(EdgeInsets(top: 5, leading: 10, bottom: 5, trailing: 10))
             } header: {
-                Text("Feed").font(.system(size: 10, weight: .semibold)).tracking(0.8).foregroundStyle(Theme.textTertiary)
+                Text("Feed")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(Theme.textTertiary(for: scheme))
             }
 
             Section {
@@ -65,7 +68,10 @@ struct SidebarView: View {
                         .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                 }
             } header: {
-                Text("Buckets").font(.system(size: 10, weight: .semibold)).tracking(0.8).foregroundStyle(Theme.textTertiary)
+                Text("BUCKETS")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(Theme.textTertiary(for: scheme))
             }
 
             if !vm.archivedBuckets.isEmpty {
@@ -76,30 +82,30 @@ struct SidebarView: View {
                                 .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                         }
                     } label: {
-                        Label("Archived", systemImage: "archivebox").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                        Label("Archived", systemImage: "archivebox").font(.system(size: 11)).foregroundStyle(Theme.textSecondary(for: scheme))
                     }
                 }
             }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .background(scheme == .dark ? Theme.sidebar : Color(nsColor: .controlBackgroundColor).opacity(0.6))
+        .background(Theme.sidebar(for: scheme))
         .safeAreaInset(edge: .bottom) {
             Button { showNewBucketAlert = true } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "plus").font(.system(size: 10, weight: .medium))
                     Text("New bucket").font(.system(size: 12, weight: .medium))
                 }
-                .foregroundStyle(Theme.textSecondary)
+                .foregroundStyle(Theme.textSecondary(for: scheme))
                 .padding(.horizontal, 10).padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(scheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.06)))
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.separator, lineWidth: 0.5))
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.raised(for: scheme)))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.hairlineBorder(for: scheme), lineWidth: DumpsMetrics.hairline))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 10).padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background((scheme == .dark ? Theme.sidebar : Color(nsColor: .controlBackgroundColor)).opacity(0.95))
-            .overlay(Rectangle().fill(Theme.separator).frame(height: 0.5), alignment: .top)
+            .background(Theme.sidebar(for: scheme).opacity(0.98))
+            .overlay(Rectangle().fill(Theme.hairlineBorder(for: scheme)).frame(height: DumpsMetrics.hairline), alignment: .top)
         }
         .onAppear { vm.refresh(); activeBucketStore.buckets = vm.activeBuckets }
         .onReceive(NotificationCenter.default.publisher(for: .dumpsDidChange)) { _ in vm.refresh(); activeBucketStore.buckets = vm.activeBuckets }
@@ -131,19 +137,19 @@ struct SidebarView: View {
     private func bucketRow(_ bucket: Bucket) -> some View {
         HStack(spacing: 6) {
             if activeBucketStore.activeBucketId == bucket.id {
-                Circle().fill(Theme.accent).frame(width: 6, height: 6)
+                Circle().fill(Theme.violet).frame(width: 6, height: 6)
                     .help("Active capture bucket").accessibilityLabel("Active")
             } else {
                 Circle().fill(Color.clear).frame(width: 6, height: 6)
             }
             Text(bucket.name).font(.system(size: 12.5, weight: .regular)).lineLimit(1).truncationMode(.tail)
-                .foregroundStyle(Theme.textPrimary.opacity(0.88))
+                .foregroundStyle(Theme.textPrimary(for: scheme).opacity(0.88))
             Spacer(minLength: 4)
             if let count = vm.counts[bucket.id], count > 0 {
                 Text("\(count)").font(.system(size: 10, weight: .medium)).monospacedDigit()
-                    .foregroundStyle(Theme.textTertiary)
+                    .foregroundStyle(Theme.textTertiary(for: scheme))
                     .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(Capsule().fill(Color.white.opacity(0.06)))
+                    .background(Capsule().fill(Theme.raised(for: scheme)))
             }
         }
         .contentShape(Rectangle())

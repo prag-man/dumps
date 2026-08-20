@@ -8,6 +8,7 @@ enum BucketError: Error, LocalizedError {
     case duplicate(String)
     case notFound
     case cannotArchiveLastBucket
+    case cannotDeleteLastBucket
     case cannotDeleteNonEmpty
     case cannotDeleteWithDumps
     var errorDescription: String? {
@@ -16,6 +17,7 @@ enum BucketError: Error, LocalizedError {
         case .duplicate(let n): return "A bucket named \"\(n)\" already exists."
         case .notFound: return "Bucket not found."
         case .cannotArchiveLastBucket: return "Cannot archive the last remaining bucket."
+        case .cannotDeleteLastBucket: return "Cannot delete the last remaining bucket."
         case .cannotDeleteNonEmpty: return "Cannot delete a bucket that still contains dumps."
         case .cannotDeleteWithDumps: return "Cannot delete a bucket that still contains dumps."
         }
@@ -121,13 +123,25 @@ final class BucketRepository {
     func deleteIfEmpty(id: String) throws {
         try db.withDB { handle in
             guard Self.fetchAll(db: handle, whereClause: "id = ?", bind: { stmt in sqlite3_bind_text(stmt, 1, (id as NSString).utf8String, -1, SQLITE_TRANSIENT) }).first != nil else { throw BucketError.notFound }
+            // Guard last active bucket before checking dump count so the error is clear.
+            if Self.countActive(db: handle) <= 1 { throw BucketError.cannotDeleteLastBucket }
             if Self.dumpCount(bucketId: id, db: handle) > 0 { throw BucketError.cannotDeleteNonEmpty }
+            // If deleting the active bucket, migrate active_bucket_id to a fallback.
+            let activeId = Self.appStateValue(key: "active_bucket_id", db: handle)
+            let isActiveBucket = activeId == id
             let sql = "DELETE FROM buckets WHERE id = ?;"
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK else { throw DatabaseError.sqliteError(code: sqlite3_errcode(handle), message: String(cString: sqlite3_errmsg(handle)), sql: sql) }
             defer { sqlite3_finalize(stmt) }
             sqlite3_bind_text(stmt, 1, (id as NSString).utf8String, -1, SQLITE_TRANSIENT)
             guard sqlite3_step(stmt) == SQLITE_DONE else { throw DatabaseError.sqliteError(code: sqlite3_errcode(handle), message: String(cString: sqlite3_errmsg(handle)), sql: sql) }
+            if isActiveBucket {
+                let remaining = Self.fetchAll(db: handle, whereClause: "archived_at IS NULL")
+                if let fallback = remaining.first {
+                    Self.setAppState(key: "active_bucket_id", value: fallback.id, db: handle)
+                    UserDefaults.standard.set(fallback.id, forKey: "active_bucket_id")
+                }
+            }
         }
     }
 

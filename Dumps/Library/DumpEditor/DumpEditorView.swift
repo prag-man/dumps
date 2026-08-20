@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-// MARK: - DumpEditorView
+// MARK: - DumpEditorView (thin wrapper — canonical editor is InlineDumpEditor below)
 
 /// Editor for a single dump. Supports both inline and sheet presentation.
 /// - Validation: non-whitespace required
@@ -31,6 +31,33 @@ struct DumpEditorView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.primary)
 
+            InlineDumpEditor(
+                text: $text,
+                onSave: { if isValid { onSave(text) } },
+                onCancel: { onCancel() }
+            )
+        }
+        .padding(16)
+        .frame(minWidth: 360)
+        .onAppear { focused = true }
+    }
+}
+
+// MARK: - InlineDumpEditor (canonical)
+
+/// Lightweight inline editor surface — the single source of truth for dump editing.
+struct InlineDumpEditor: View {
+    @Binding var text: String
+    var onSave: () -> Void
+    var onCancel: () -> Void
+    @FocusState private var focused: Bool
+
+    private var isValid: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .topLeading) {
                 if text.isEmpty {
                     Text("Write something…")
@@ -44,7 +71,7 @@ struct DumpEditorView: View {
                     .font(.system(size: 13))
                     .lineSpacing(2)
                     .scrollContentBackground(.hidden)
-                    .frame(minHeight: 80, maxHeight: 240)
+                    .frame(minHeight: 60, maxHeight: 220)
                     .padding(6)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -52,60 +79,11 @@ struct DumpEditorView: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                            .strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1)
                     )
                     .focused($focused)
             }
-
-            HStack(spacing: 8) {
-                Button("Cancel") { onCancel() }
-                    .keyboardShortcut(.escape, modifiers: [])
-                Spacer()
-                Button("Save") { if isValid { onSave(text) } }
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(!isValid)
-            }
-            .font(.system(size: 12))
-        }
-        .padding(16)
-        .frame(minWidth: 360)
-        .onAppear { focused = true }
-    }
-}
-
-// MARK: - InlineDumpEditor
-
-/// Lightweight inline variant without the title, for embedding directly in a row.
-struct InlineDumpEditor: View {
-    @Binding var text: String
-    var onSave: () -> Void
-    var onCancel: () -> Void
-    @FocusState private var focused: Bool
-
-    private var isValid: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextEditor(text: $text)
-                .font(.system(size: 13))
-                .lineSpacing(2)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 60, maxHeight: 220)
-                .padding(6)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1)
-                )
-                .focused($focused)
-                .onAppear { focused = true }
+            .onAppear { focused = true }
 
             HStack(spacing: 8) {
                 Button("Cancel") { onCancel() }
