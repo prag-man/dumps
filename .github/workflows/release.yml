@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Tests
+        run: |
+          xcodebuild test \
+            -project Dumps.xcodeproj \
+            -scheme Dumps \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Archive Release
+        run: |
+          xcodebuild archive \
+            -project Dumps.xcodeproj \
+            -scheme Dumps \
+            -configuration Release \
+            -archivePath build/Dumps.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            SKIP_INSTALL=NO
+
+      - name: Export .app (unsigned, for artifact)
+        run: |
+          mkdir -p build/export
+          cp -R build/Dumps.xcarchive/Products/Applications/Dumps.app build/export/
+          ditto -c -k --sequesterRsrc --keepParent build/export/Dumps.app "build/Dumps-${{ github.ref_name }}-unsigned.zip"
+          ls -lh build/*.zip build/export/
+
+      - name: Create DMG (unsigned)
+        run: |
+          brew install create-dmg 2>/dev/null || true
+          mkdir -p build/dmg
+          cp -R build/export/Dumps.app build/dmg/
+          ln -s /Applications build/dmg/Applications 2>/dev/null || true
+          hdiutil create -volname "Dumps" -srcfolder build/dmg -ov -format UDZO "build/Dumps-${{ github.ref_name }}-unsigned.dmg" || \
+            ditto -c -k --sequesterRsrc build/dmg "build/Dumps-${{ github.ref_name }}-unsigned.dmg.zip"
+          ls -lh build/*.dmg* 2>/dev/null; ls -lh build/*.zip 2>/dev/null
+
+      - name: SHA256
+        run: |
+          shasum -a 256 build/Dumps-${{ github.ref_name }}-unsigned.* 2>/dev/null | tee build/SHA256SUMS.txt || true
+          cat build/SHA256SUMS.txt 2>/dev/null || echo "no checksum"
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/Dumps-${{ github.ref_name }}-unsigned.zip
+            build/Dumps-${{ github.ref_name }}-unsigned.dmg
+            build/Dumps-${{ github.ref_name }}-unsigned.dmg.zip
+            build/SHA256SUMS.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+
+      - name: Upload artifact (dispatch / non-tag)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dumps-${{ github.ref_name }}-unsigned
+          path: |
+            build/Dumps-${{ github.ref_name }}-unsigned.zip
+            build/Dumps-${{ github.ref_name }}-unsigned.dmg
+            build/SHA256SUMS.txt
+          if-no-files-found: warn
